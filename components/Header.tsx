@@ -5,21 +5,34 @@ import { usePathname, useRouter } from 'next/navigation'
 import Logo from './Logo'
 import { createClient } from '@/lib/supabase/client'
 
-export default function Header() {
+const AVATAR_EMOJI: Record<string, string> = {
+  fuchs: '🦊', koala: '🐨', loewe: '🦁', frosch: '🐸',
+  adler: '🦅', delfin: '🐬', schmetterling: '🦋', wolf: '🐺',
+}
+
+export default function Header({
+  userName,
+  userAvatar,
+}: {
+  userName?: string
+  userAvatar?: string
+}) {
   const pathname = usePathname()
   const router = useRouter()
   const supabase = createClient()
 
   const nav = [
-    { href: '/', label: 'Dashboard', de: 'Übersicht' },
-    { href: '/add', label: 'Add card', de: 'Karte hinzufügen' },
-    { href: '/stats', label: 'Stats', de: 'Statistik' },
+    { href: '/', label: 'Übersicht' },
+    { href: '/add', label: 'Karte hinzufügen' },
+    { href: '/stats', label: 'Statistik' },
   ]
 
   async function handleSignOut() {
     await supabase.auth.signOut()
     router.push('/auth/login')
   }
+
+  const emoji = userAvatar ? AVATAR_EMOJI[userAvatar] : null
 
   return (
     <header className="border-b border-gray-100 bg-white sticky top-0 z-10">
@@ -41,18 +54,22 @@ export default function Header() {
                 }`}
               >
                 {item.label}
-                <span className="hidden sm:inline text-gray-400 ml-1 font-normal">
-                  / {item.de}
-                </span>
               </Link>
             )
           })}
-          <button
-            onClick={handleSignOut}
-            className="ml-2 px-3 py-1.5 rounded-md text-sm text-gray-400 hover:text-gray-700 hover:bg-gray-50 transition-colors"
-          >
-            Sign out
-          </button>
+          <div className="flex items-center gap-2 ml-2">
+            {emoji && (
+              <span className="text-xl leading-none" title={userName}>
+                {emoji}
+              </span>
+            )}
+            <button
+              onClick={handleSignOut}
+              className="px-3 py-1.5 rounded-md text-sm text-gray-400 hover:text-gray-700 hover:bg-gray-50 transition-colors"
+            >
+              Abmelden
+            </button>
+          </div>
         </nav>
       </div>
     </header>

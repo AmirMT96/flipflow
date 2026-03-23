@@ -2,51 +2,29 @@ import { redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
 import Header from '@/components/Header'
 
-interface Deck {
-  id: string
-  name: string
-  created_at: string
-}
+interface Deck { id: string; name: string; created_at: string }
+interface Review { card_id: string; due_date: string; repetitions: number; interval: number; last_reviewed: string | null }
 
-interface CardCount {
-  deck_id: string
-  count: number
-}
-
-interface Review {
-  card_id: string
-  due_date: string
-  repetitions: number
-  interval: number
+const AVATAR_EMOJI: Record<string, string> = {
+  fuchs: '🦊', koala: '🐨', loewe: '🦁', frosch: '🐸',
+  adler: '🦅', delfin: '🐬', schmetterling: '🦋', wolf: '🐺',
 }
 
 export default async function DashboardPage() {
   const supabase = await createClient()
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
-
+  const { data: { user } } = await supabase.auth.getUser()
   if (!user) redirect('/auth/login')
 
-  // Fetch decks
-  const { data: decks } = await supabase
-    .from('decks')
-    .select('*')
-    .order('created_at', { ascending: false })
+  const name = user.user_metadata?.name as string | undefined
+  const avatar = user.user_metadata?.avatar as string | undefined
 
-  // Fetch all cards for this user
-  const { data: cards } = await supabase
-    .from('cards')
-    .select('id, deck_id')
-
-  // Fetch all reviews
-  const { data: reviews } = await supabase
-    .from('reviews')
-    .select('card_id, due_date, repetitions, interval')
+  const [{ data: decks }, { data: cards }, { data: reviews }] = await Promise.all([
+    supabase.from('decks').select('*').order('created_at', { ascending: false }),
+    supabase.from('cards').select('id, deck_id'),
+    supabase.from('reviews').select('card_id, due_date, repetitions, interval, last_reviewed'),
+  ])
 
   const today = new Date().toISOString().split('T')[0]
-
-  // Compute stats
   const totalCards = cards?.length ?? 0
 
   const reviewMap = new Map<string, Review>()
@@ -54,98 +32,66 @@ export default async function DashboardPage() {
 
   const dueToday = cards?.filter((c) => {
     const r = reviewMap.get(c.id)
-    if (!r) return true // never reviewed = due
-    return r.due_date <= today
+    return !r || r.due_date <= today
   }).length ?? 0
 
-  // Streak: simplified — count distinct days with reviews in last 30 days
-  const { data: streakData } = await supabase
-    .from('reviews')
-    .select('last_reviewed')
-    .not('last_reviewed', 'is', null)
-
   const reviewedDays = new Set(
-    streakData?.map((r: { last_reviewed: string }) =>
-      r.last_reviewed.split('T')[0]
-    ) ?? []
+    reviews?.filter((r) => r.last_reviewed).map((r) => r.last_reviewed!.split('T')[0]) ?? []
   )
-
   let streak = 0
   const cur = new Date()
   while (true) {
     const d = cur.toISOString().split('T')[0]
-    if (reviewedDays.has(d)) {
-      streak++
-      cur.setDate(cur.getDate() - 1)
-    } else {
-      break
-    }
+    if (reviewedDays.has(d)) { streak++; cur.setDate(cur.getDate() - 1) }
+    else break
   }
 
-  // Per-deck stats
   const deckStats = (decks ?? []).map((deck: Deck) => {
     const deckCards = cards?.filter((c) => c.deck_id === deck.id) ?? []
     const cardCount = deckCards.length
     const dueCount = deckCards.filter((c) => {
       const r = reviewMap.get(c.id)
-      if (!r) return true
-      return r.due_date <= today
+      return !r || r.due_date <= today
     }).length
-    const mature = deckCards.filter((c) => {
-      const r = reviewMap.get(c.id)
-      return r && r.interval >= 21
-    }).length
+    const mature = deckCards.filter((c) => { const r = reviewMap.get(c.id); return r && r.interval >= 21 }).length
     const pctMature = cardCount > 0 ? Math.round((mature / cardCount) * 100) : 0
     return { deck, cardCount, dueCount, pctMature }
   })
 
   return (
     <>
-      <Header />
+      <Header userName={name} userAvatar={avatar} />
       <main className="max-w-5xl mx-auto px-4 py-10">
-        {/* Page title */}
-        <h1 className="text-2xl font-medium mb-8">
-          Dashboard <span className="text-gray-400 font-normal">/ Übersicht</span>
-        </h1>
+        {/* Greeting */}
+        {name && (
+          <div className="mb-8">
+            <h1 className="text-2xl font-medium text-gray-900">
+              {avatar && <span className="mr-2">{AVATAR_EMOJI[avatar]}</span>}
+              Hallo, {name}!
+            </h1>
+          </div>
+        )}
 
         {/* Stat cards */}
         <div className="grid grid-cols-3 gap-4 mb-10">
-          <StatCard
-            label="Total cards"
-            labelDe="Karten gesamt"
-            value={totalCards}
-          />
-          <StatCard
-            label="Due today"
-            labelDe="Heute fällig"
-            value={dueToday}
-            accent
-          />
-          <StatCard
-            label="Day streak"
-            labelDe="Tages-Serie"
-            value={streak}
-            suffix={streak === 1 ? ' day' : ' days'}
-          />
+          <StatCard label="Karten gesamt" value={totalCards} />
+          <StatCard label="Heute fällig" value={dueToday} accent />
+          <StatCard label="Tages-Serie" value={streak} suffix={streak === 1 ? ' Tag' : ' Tage'} />
         </div>
 
         {/* Decks */}
-        <div className="flex items-center justify-between mb-4">
-          <h2 className="text-sm font-medium text-gray-500 uppercase tracking-wide">
-            My Decks / Meine Decks
-          </h2>
-        </div>
+        <h2 className="text-sm font-medium text-gray-500 uppercase tracking-wide mb-4">
+          Meine Decks
+        </h2>
 
         {deckStats.length === 0 ? (
           <div className="border border-dashed border-gray-200 rounded-xl p-12 text-center">
-            <p className="text-gray-400 text-sm">
-              No decks yet. Add your first card to get started.
-            </p>
+            <p className="text-gray-400 text-sm">Noch keine Decks. Füge deine erste Karte hinzu.</p>
             <a
               href="/add"
               className="inline-block mt-4 px-4 py-2 bg-[#378ADD] text-white text-sm rounded-lg font-medium hover:bg-[#2d72c4] transition-colors"
             >
-              Add card / Karte hinzufügen
+              Karte hinzufügen
             </a>
           </div>
         ) : (
@@ -157,27 +103,22 @@ export default async function DashboardPage() {
               >
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-3 mb-2">
-                    <span className="font-medium text-gray-900 truncate">
-                      {deck.name}
-                    </span>
+                    <span className="font-medium text-gray-900 truncate">{deck.name}</span>
                     <span className="text-xs text-gray-400">
-                      {cardCount} {cardCount === 1 ? 'card' : 'cards'}
+                      {cardCount} {cardCount === 1 ? 'Karte' : 'Karten'}
                     </span>
                     {dueCount > 0 && (
                       <span className="text-xs px-2 py-0.5 bg-[#378ADD]/10 text-[#378ADD] rounded-full font-medium">
-                        {dueCount} due
+                        {dueCount} fällig
                       </span>
                     )}
                   </div>
                   <div className="flex items-center gap-2">
                     <div className="flex-1 h-1.5 bg-gray-100 rounded-full overflow-hidden">
-                      <div
-                        className="h-full bg-[#378ADD] rounded-full transition-all"
-                        style={{ width: `${pctMature}%` }}
-                      />
+                      <div className="h-full bg-[#378ADD] rounded-full transition-all" style={{ width: `${pctMature}%` }} />
                     </div>
-                    <span className="text-xs text-gray-400 tabular-nums w-12 text-right">
-                      {pctMature}% mature
+                    <span className="text-xs text-gray-400 tabular-nums w-16 text-right">
+                      {pctMature}% reif
                     </span>
                   </div>
                 </div>
@@ -189,7 +130,7 @@ export default async function DashboardPage() {
                       : 'bg-gray-100 text-gray-400 cursor-default pointer-events-none'
                   }`}
                 >
-                  Study / Lernen
+                  Lernen
                 </a>
               </div>
             ))}
@@ -200,33 +141,13 @@ export default async function DashboardPage() {
   )
 }
 
-function StatCard({
-  label,
-  labelDe,
-  value,
-  accent,
-  suffix,
-}: {
-  label: string
-  labelDe: string
-  value: number
-  accent?: boolean
-  suffix?: string
-}) {
+function StatCard({ label, value, accent, suffix }: { label: string; value: number; accent?: boolean; suffix?: string }) {
   return (
     <div className="bg-white border border-gray-100 rounded-xl px-5 py-4">
-      <p className="text-xs text-gray-400 mb-1">
-        {label} / {labelDe}
-      </p>
-      <p
-        className={`text-3xl font-medium tabular-nums ${accent ? 'text-[#378ADD]' : 'text-gray-900'}`}
-      >
+      <p className="text-xs text-gray-400 mb-1">{label}</p>
+      <p className={`text-3xl font-medium tabular-nums ${accent ? 'text-[#378ADD]' : 'text-gray-900'}`}>
         {value}
-        {suffix && (
-          <span className="text-base font-normal text-gray-400 ml-1">
-            {suffix}
-          </span>
-        )}
+        {suffix && <span className="text-base font-normal text-gray-400 ml-1">{suffix}</span>}
       </p>
     </div>
   )
