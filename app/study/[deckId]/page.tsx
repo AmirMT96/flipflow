@@ -11,10 +11,9 @@ interface Card { id: string; front: string; back: string; example_sentence: stri
 interface ReviewRow { card_id: string; ease_factor: number; interval: number; repetitions: number; due_date: string }
 
 // Points awarded per rating
-const RATING_POINTS: Record<Rating, number> = { 0: 0, 1: 5, 2: 10, 3: 20 }
+const RATING_POINTS: Record<Rating, number> = { 0: 0, 1: 0, 2: 5, 3: 10 }
 
 const RATINGS: { rating: Rating; label: string; color: string }[] = [
-  { rating: 0, label: 'Nochmal', color: 'border-red-200 text-red-600 hover:bg-red-50' },
   { rating: 1, label: 'Schwer',  color: 'border-orange-200 text-orange-600 hover:bg-orange-50' },
   { rating: 2, label: 'Gut',     color: 'border-[#378ADD]/30 text-[#378ADD] hover:bg-[#378ADD]/5' },
   { rating: 3, label: 'Leicht',  color: 'border-green-200 text-green-600 hover:bg-green-50' },
@@ -200,7 +199,7 @@ export default function StudyPage() {
 
         {/* Rating buttons */}
         <div
-          className={`mt-8 grid grid-cols-4 gap-3 w-full max-w-lg transition-opacity duration-300 ${
+          className={`mt-8 grid grid-cols-3 gap-3 w-full max-w-lg transition-opacity duration-300 ${
             flipped ? 'opacity-100' : 'opacity-0 pointer-events-none'
           }`}
         >
