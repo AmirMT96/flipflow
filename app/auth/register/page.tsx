@@ -2,12 +2,10 @@
 
 import { useState } from 'react'
 import Link from 'next/link'
-import { useRouter } from 'next/navigation'
 import Logo from '@/components/Logo'
 import { createClient } from '@/lib/supabase/client'
 
 export default function RegisterPage() {
-  const router = useRouter()
   const supabase = createClient()
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
@@ -23,8 +21,7 @@ export default function RegisterPage() {
       setError(error.message)
       setLoading(false)
     } else {
-      router.push('/')
-      router.refresh()
+      window.location.href = '/'
     }
   }
 
